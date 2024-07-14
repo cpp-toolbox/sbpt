@@ -57,6 +57,10 @@ def sbpt_list(root_dir):
     for subproject, data in subprojects.items():
         print(f"Subproject: {subproject}, Path: {data['path']}")
 
+def write_help_to_readme(help_text):
+    with open('readme.txt', 'w') as readme_file:
+        readme_file.write(help_text)
+
 def main():
     help_text = """
     sbpt is a project which allows programmers to re-use C++ code in multiple projects easily without having to use a complex system to handle this.
@@ -76,6 +80,9 @@ def main():
     parser = argparse.ArgumentParser(description="Manage C++ subprojects.", epilog=help_text, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('command', choices=['initialize', 'list'], help="Command to run")
     args = parser.parse_args()
+
+    # Write help text to readme.txt
+    write_help_to_readme(help_text)
 
     root_dir = os.getcwd()
     if args.command == 'initialize':
