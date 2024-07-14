@@ -72,7 +72,9 @@ def main():
       sbpt initialize
       sbpt list
 
-    The `sbpt.ini` file format:
+    In order to create a subproject all you have to do is have a directory which contains the relevant files and create a `sbpt.ini` file in its root,
+    it follows the following format: 
+
       [subproject]
       dependencies = comma,separated,list,of,dependencies
       export = comma,separated,list,of,header,files,to,export
