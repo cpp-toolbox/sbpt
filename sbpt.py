@@ -2,11 +2,11 @@ import os
 import argparse
 import configparser
 
-def find_subprojects(root_dir):
+def find_subprojects(source_dir):
     subprojects = {}
     subproject_paths = {}
-    print("Searching for subprojects...")
-    for root, dirs, files in os.walk(root_dir):
+    print(f"Searching for subprojects in {source_dir}...")
+    for root, dirs, files in os.walk(source_dir):
         if 'sbpt.ini' in files:
             subproject_name = os.path.basename(root)
             if subproject_name in subprojects:
@@ -47,13 +47,13 @@ def write_includes(subprojects):
             include_file.write('\n'.join(includes))
         print(f"Generated includes for subproject: {subproject}")
 
-def sbpt_initialize(root_dir):
-    subprojects = find_subprojects(root_dir)
+def sbpt_initialize(source_dir):
+    subprojects = find_subprojects(source_dir)
     write_includes(subprojects)
     print("Initialization complete.")
 
-def sbpt_list(root_dir):
-    subprojects = find_subprojects(root_dir)
+def sbpt_list(source_dir):
+    subprojects = find_subprojects(source_dir)
     for subproject, data in subprojects.items():
         print(f"Subproject: {subproject}, Path: {data['path']}")
 
@@ -69,28 +69,26 @@ def main():
     that they can be loaded into any project and still work.
 
     Usage:
-      sbpt initialize
-      sbpt list
+      sbpt initialize <source_dir>
+      sbpt list <source_dir>
 
-    In order to create a subproject all you have to do is have a directory which contains the relevant files and create a `sbpt.ini` file in its root,
-    it follows the following format: 
-
+    The `sbpt.ini` file format:
       [subproject]
       dependencies = comma,separated,list,of,dependencies
       export = comma,separated,list,of,header,files,to,export
     """
     parser = argparse.ArgumentParser(description="Manage C++ subprojects.", epilog=help_text, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('command', choices=['initialize', 'list'], help="Command to run")
+    parser.add_argument('source_dir', help="Source directory to look for subprojects")
     args = parser.parse_args()
 
     # Write help text to readme.txt
     write_help_to_readme(help_text)
 
-    root_dir = os.getcwd()
     if args.command == 'initialize':
-        sbpt_initialize(root_dir)
+        sbpt_initialize(args.source_dir)
     elif args.command == 'list':
-        sbpt_list(root_dir)
+        sbpt_list(args.source_dir)
 
 if __name__ == '__main__':
     main()

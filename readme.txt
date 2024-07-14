@@ -5,12 +5,10 @@
     that they can be loaded into any project and still work.
 
     Usage:
-      sbpt initialize
-      sbpt list
+      sbpt initialize <source_dir>
+      sbpt list <source_dir>
 
-    In order to create a subproject all you have to do is have a directory which contains the relevant files and create a `sbpt.ini` file in its root,
-    it follows the following format: 
-
+    The `sbpt.ini` file format:
       [subproject]
       dependencies = comma,separated,list,of,dependencies
       export = comma,separated,list,of,header,files,to,export
