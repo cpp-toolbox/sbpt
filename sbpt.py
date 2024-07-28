@@ -50,6 +50,7 @@ def write_includes(subprojects):
 
         gitignore_file_path = os.path.join(subproject_path, '.gitignore')
         with open(gitignore_file_path, 'w') as gitignore_file:
+            gitignore_file.write(".gitignore\n")
             gitignore_file.write(include_file_name)
 
         print(f"Generated includes and gitignore for subproject: {subproject}")
