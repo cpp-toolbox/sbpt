@@ -42,10 +42,17 @@ def write_includes(subprojects):
             else:
                 print(f"Error: Dependency {dependency} not found for subproject {subproject}")
 
-        include_file_path = os.path.join(subproject_path, 'sbpt_generated_includes.hpp')
+        include_file_name = 'sbpt_generated_includes.hpp'
+
+        include_file_path = os.path.join(subproject_path, include_file_name)
         with open(include_file_path, 'w') as include_file:
             include_file.write('\n'.join(includes))
-        print(f"Generated includes for subproject: {subproject}")
+
+        gitignore_file_path = os.path.join(subproject_path, '.gitignore')
+        with open(gitignore_file_path, 'w') as gitignore_file:
+            gitignore_file.write(include_file_name)
+
+        print(f"Generated includes and gitignore for subproject: {subproject}")
 
 def sbpt_initialize(source_dir):
     subprojects = find_subprojects(source_dir)
