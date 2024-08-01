@@ -2,6 +2,7 @@ import os
 import argparse
 import configparser
 
+
 def find_subprojects(source_dir):
     subprojects = {}
     subproject_paths = {}
@@ -10,10 +11,12 @@ def find_subprojects(source_dir):
         if 'sbpt.ini' in files:
             subproject_name = os.path.basename(root)
             if subproject_name in subprojects:
-                raise ValueError(f"Duplicate subproject name found: {subproject_name} in {root} and {subproject_paths[subproject_name]}")
+                raise ValueError(
+                    f"Duplicate subproject name found: {subproject_name} in {root} and {subproject_paths[subproject_name]}")
             config = configparser.ConfigParser()
             config.read(os.path.join(root, 'sbpt.ini'))
-            dependencies = [dep.strip() for dep in config.get('subproject', 'dependencies', fallback='').split(',') if dep.strip()]
+            dependencies = [dep.strip() for dep in config.get('subproject', 'dependencies', fallback='').split(',') if
+                            dep.strip()]
             exports = [exp.strip() for exp in config.get('subproject', 'export', fallback='').split(',') if exp.strip()]
             subprojects[subproject_name] = {
                 'path': root,
@@ -24,9 +27,11 @@ def find_subprojects(source_dir):
             print(f"Found subproject: {subproject_name}")
     return subprojects
 
+
 def generate_include_path(subproject_path, dependency_path, export_file):
     relative_path = os.path.relpath(dependency_path, subproject_path)
     return f'#include "{os.path.join(relative_path, export_file)}"'
+
 
 def write_includes(subprojects):
     for subproject, data in subprojects.items():
@@ -55,19 +60,18 @@ def write_includes(subprojects):
 
         print(f"Generated includes and gitignore for subproject: {subproject}")
 
-def sbpt_initialize(source_dir):
+
+def sbpt_init(source_dir):
     subprojects = find_subprojects(source_dir)
     write_includes(subprojects)
     print("Initialization complete.")
+
 
 def sbpt_list(source_dir):
     subprojects = find_subprojects(source_dir)
     for subproject, data in subprojects.items():
         print(f"Subproject: {subproject}, Path: {data['path']}")
 
-def write_help_to_readme(help_text):
-    with open('readme.txt', 'w') as readme_file:
-        readme_file.write(help_text)
 
 def main():
     help_text = """
@@ -77,7 +81,7 @@ def main():
     that they can be loaded into any project and still work.
 
     Usage:
-      sbpt initialize <source_dir>
+      sbpt init <source_dir>
       sbpt list <source_dir>
 
     The `sbpt.ini` file format:
@@ -85,18 +89,17 @@ def main():
       dependencies = comma,separated,list,of,dependencies
       export = comma,separated,list,of,header,files,to,export
     """
-    parser = argparse.ArgumentParser(description="Manage C++ subprojects.", epilog=help_text, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=['initialize', 'list'], help="Command to run")
+    parser = argparse.ArgumentParser(description="Manage C++ subprojects.", epilog=help_text,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('command', choices=['init', 'list'], help="Command to run")
     parser.add_argument('source_dir', help="Source directory to look for subprojects")
     args = parser.parse_args()
 
-    # Write help text to readme.txt
-    write_help_to_readme(help_text)
-
-    if args.command == 'initialize':
-        sbpt_initialize(args.source_dir)
+    if args.command == 'init':
+        sbpt_init(args.source_dir)
     elif args.command == 'list':
         sbpt_list(args.source_dir)
+
 
 if __name__ == '__main__':
     main()
