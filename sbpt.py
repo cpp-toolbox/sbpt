@@ -1,7 +1,22 @@
 import os
 import argparse
 import configparser
+import enum
 
+class TextColor(enum.Enum):
+    BLACK = 30
+    RED = 31
+    GREEN = 32
+    YELLOW = 33
+    BLUE = 34
+    MAGENTA = 35
+    CYAN = 36
+    WHITE = 37
+    RESET = 0
+
+def colored_print(text: str, color: TextColor):
+    # Use the ANSI escape code for the selected color
+    print(f"\033[{color.value}m{text}\033[0m")
 
 def find_subprojects(source_dir):
     subprojects = {}
@@ -45,7 +60,8 @@ def write_includes(subprojects):
                     include_path = generate_include_path(subproject_path, dependency_path, export_file)
                     includes.append(include_path)
             else:
-                print(f"Error: Dependency {dependency} not found for subproject {subproject}")
+                error_msg = f"Error: Dependency {dependency} not found for subproject {subproject}, be make sure to clone in all the subprojects dependencies"
+                colored_print(error_msg, TextColor.RED)
 
         include_file_name = 'sbpt_generated_includes.hpp'
 
