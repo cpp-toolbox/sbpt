@@ -88,7 +88,6 @@ def sbpt_list(source_dir):
     for subproject, data in subprojects.items():
         print(f"Subproject: {subproject}, Path: {data['path']}")
 
-
 def main():
     help_text = """
     sbpt is a project which allows programmers to re-use C++ code in multiple projects easily without having to use a complex system to handle this.
@@ -97,25 +96,47 @@ def main():
     that they can be loaded into any project and still work.
 
     Usage:
-      sbpt init <source_dir>
-      sbpt list <source_dir>
+      sbpt --init <source_dir>
+      sbpt --list <source_dir>
 
     The `sbpt.ini` file format:
       [subproject]
       dependencies = comma,separated,list,of,dependencies
       export = comma,separated,list,of,header,files,to,export
     """
-    parser = argparse.ArgumentParser(description="Manage C++ subprojects.", epilog=help_text,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=['init', 'list'], help="Command to run")
-    parser.add_argument('source_dir', help="Source directory to look for subprojects")
+    
+    # Create the argument parser
+    parser = argparse.ArgumentParser(
+        description="Manage C++ subprojects (sbpts)",
+        epilog=help_text,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+
+    # Add command options
+    parser.add_argument(
+        '--init',
+        metavar='SOURCE_DIR',
+        type=str,
+        help="Initialize a subproject in the specified source directory"
+    )
+
+    parser.add_argument(
+        '--list',
+        metavar='SOURCE_DIR',
+        type=str,
+        help="List subprojects in the specified source directory"
+    )
+
+    # Parse the arguments
     args = parser.parse_args()
 
-    if args.command == 'init':
-        sbpt_init(args.source_dir)
-    elif args.command == 'list':
-        sbpt_list(args.source_dir)
-
+    # Handle the commands based on provided arguments
+    if args.init:
+        sbpt_init(args.init)
+    elif args.list:
+        sbpt_list(args.list)
+    else:
+        parser.print_help()
 
 if __name__ == '__main__':
     main()
