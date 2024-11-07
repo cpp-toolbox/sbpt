@@ -2,6 +2,8 @@ import os
 import argparse
 import configparser
 import enum
+import subprocess
+import requests
 
 class TextColor(enum.Enum):
     BLACK = 30
@@ -33,20 +35,20 @@ def find_subprojects(source_dir):
             dependencies = [dep.strip() for dep in config.get('subproject', 'dependencies', fallback='').split(',') if
                             dep.strip()]
             exports = [exp.strip() for exp in config.get('subproject', 'export', fallback='').split(',') if exp.strip()]
+            tags = [tag.strip() for tag in config.get('subproject', 'tags', fallback='').split(',') if tag.strip()]
             subprojects[subproject_name] = {
                 'path': root,
                 'dependencies': dependencies,
-                'exports': exports
+                'exports': exports,
+                'tags': tags
             }
             subproject_paths[subproject_name] = root
             print(f"Found subproject: {subproject_name}")
     return subprojects
 
-
 def generate_include_path(subproject_path, dependency_path, export_file):
     relative_path = os.path.relpath(dependency_path, subproject_path)
     return f'#include "{os.path.join(relative_path, export_file)}"'
-
 
 def write_includes(subprojects):
     for subproject, data in subprojects.items():
@@ -60,11 +62,9 @@ def write_includes(subprojects):
                     include_path = generate_include_path(subproject_path, dependency_path, export_file)
                     includes.append(include_path)
             else:
-                error_msg = f"Error: Dependency {dependency} not found for subproject {subproject}, be make sure to clone in all the subprojects dependencies"
+                error_msg = f"Error: Dependency {dependency} not found for subproject {subproject}. Make sure to clone all the subprojects' dependencies, running --init can help you sort this out easily."
                 colored_print(error_msg, TextColor.RED)
-
         include_file_name = 'sbpt_generated_includes.hpp'
-
         include_file_path = os.path.join(subproject_path, include_file_name)
         with open(include_file_path, 'w') as include_file:
             include_file.write('\n'.join(includes))
@@ -77,11 +77,95 @@ def write_includes(subprojects):
         print(f"Generated includes and gitignore for subproject: {subproject}")
 
 
+GITHUB_BASE_URL = "https://raw.githubusercontent.com/cpp-toolbox"
+
+def fetch_file(url):
+    """Fetches a file from a given URL and returns its contents if found."""
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.text
+    except requests.RequestException as e:
+        print(f"Failed to fetch file from {url}: {e}")
+        return None
+
+def parse_sbpt_ini(ini_content):
+    """Parses sbpt.ini content to extract dependencies and tags."""
+    config = configparser.ConfigParser()
+    config.read_string(ini_content)
+    dependencies = [dep.strip() for dep in config.get('subproject', 'dependencies', fallback='').split(',') if dep.strip()]
+    tags = [tag.strip() for tag in config.get('subproject', 'tags', fallback='').split(',') if tag.strip()]
+    return dependencies, tags
+
+def clone_dependency(source_dir, dependency):
+    """Handles the process of adding a missing dependency as a git submodule."""
+    # Attempt to fetch sbpt.ini if no tags are provided
+    sbpt_ini_url = f"{GITHUB_BASE_URL}/{dependency}/main/sbpt.ini"
+    sbpt_ini_content = fetch_file(sbpt_ini_url)
+    
+    tags = []
+    if sbpt_ini_content:
+        _, tags = parse_sbpt_ini(sbpt_ini_content)
+        print(f"Fetched tags for '{dependency}' from sbpt.ini: {tags}")
+    else:
+        print(f"No sbpt.ini file found for '{dependency}'. Proceeding without tags.")
+    
+    # Suggest a tag-based directory if tags are available
+    tag_name = tags[0] if tags else None
+    suggested_dir = os.path.join(source_dir, tag_name, dependency) if tag_name else os.path.join(source_dir, dependency)
+
+    # Offer the tag-based directory as a suggestion
+    if tag_name:
+        use_tag_dir = input(f"Would you like to add it under the tag '{tag_name}' in '{suggested_dir}'? (y/n): ").strip().lower()
+        if use_tag_dir == 'y':
+            destination_dir = suggested_dir
+        else:
+            # Prompt for a custom directory if the user doesn't want to use the tag
+            destination_dir = input(f"Enter a custom directory for '{dependency}' (or press enter to use '{source_dir}'): ").strip() or os.path.join(source_dir, dependency)
+    else:
+        # Directly prompt for a directory if no tag is available
+        destination_dir = input(f"Where would you like to store the missing dependency '{dependency}'? ").strip() or os.path.join(source_dir, dependency)
+
+    # Ensure the parent directory exists
+    os.makedirs(os.path.dirname(destination_dir), exist_ok=True)
+
+    # Construct the GitHub repository URL based on the assumed naming convention
+    clone_url = f"git@github.com:cpp-toolbox/{dependency}.git"
+    print(f"Adding '{dependency}' as a submodule from '{clone_url}' into '{destination_dir}'...")
+
+    # Add the submodule
+    subprocess.run(['git', 'submodule', 'add', clone_url, destination_dir])
+
+    print(f"Dependency '{dependency}' added as a submodule at '{destination_dir}'.")
+    return destination_dir
+
 def sbpt_init(source_dir):
     subprojects = find_subprojects(source_dir)
+
+    # Create a static list of subproject names to iterate over
+    subproject_names = list(subprojects.keys())
+
+    for subproject_name in subproject_names:
+        data = subprojects[subproject_name]
+        print(f"Processing subproject: {subproject_name}")
+
+        # Check dependencies and add missing ones
+        for dependency in data['dependencies']:
+            if dependency not in subprojects:
+                print(f"Dependency '{dependency}' is missing for subproject '{subproject_name}'.")
+                dependency_path = clone_dependency(source_dir, dependency)
+
+                # Add the cloned subproject to the dictionary
+                subprojects[dependency] = {
+                    'path': dependency_path,
+                    'dependencies': [],  # Load actual dependencies if needed
+                    'exports': []  # Load actual exports if needed
+                }
+                print(f"Subproject {dependency} added.")
+
+    # After ensuring all dependencies are available, write include files
     write_includes(subprojects)
     print("Initialization complete.")
-
 
 def sbpt_list(source_dir):
     subprojects = find_subprojects(source_dir)
