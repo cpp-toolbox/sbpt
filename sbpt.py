@@ -55,6 +55,8 @@ def write_includes(subprojects):
         print(f"Processing subproject: {subproject}")
         includes = []
         subproject_path = data['path']
+        
+        # Generate include paths for dependencies
         for dependency in data['dependencies']:
             if dependency in subprojects:
                 dependency_path = subprojects[dependency]['path']
@@ -62,19 +64,27 @@ def write_includes(subprojects):
                     include_path = generate_include_path(subproject_path, dependency_path, export_file)
                     includes.append(include_path)
             else:
-                error_msg = f"Error: Dependency {dependency} not found for subproject {subproject}. Make sure to clone all the subprojects' dependencies, running --init can help you sort this out easily."
+                error_msg = (
+                    f"Error: Dependency {dependency} not found for subproject {subproject}. "
+                    "Make sure to clone all the subprojects' dependencies. Running --init can help you sort this out easily."
+                )
                 colored_print(error_msg, TextColor.RED)
+        
+        # Write the generated includes to 'sbpt_generated_includes.hpp'
         include_file_name = 'sbpt_generated_includes.hpp'
         include_file_path = os.path.join(subproject_path, include_file_name)
         with open(include_file_path, 'w') as include_file:
             include_file.write('\n'.join(includes))
 
+        # Handle .gitignore file: create it only if it does not already exist
         gitignore_file_path = os.path.join(subproject_path, '.gitignore')
-        with open(gitignore_file_path, 'w') as gitignore_file:
-            gitignore_file.write(".gitignore\n")
-            gitignore_file.write(include_file_name)
-
-        print(f"Generated includes and gitignore for subproject: {subproject}")
+        if not os.path.exists(gitignore_file_path):
+            with open(gitignore_file_path, 'w') as gitignore_file:
+                gitignore_file.write(".gitignore\n")
+                gitignore_file.write(include_file_name)
+            print(f"Generated includes and .gitignore for subproject: {subproject}")
+        else:
+            print(f".gitignore already exists for subproject: {subproject}. Skipping .gitignore creation to avoid overwriting.")
 
 
 GITHUB_BASE_URL = "https://raw.githubusercontent.com/cpp-toolbox"
