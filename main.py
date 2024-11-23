@@ -5,25 +5,14 @@ import enum
 import subprocess
 import requests
 
-class TextColor(enum.Enum):
-    BLACK = 30
-    RED = 31
-    GREEN = 32
-    YELLOW = 33
-    BLUE = 34
-    MAGENTA = 35
-    CYAN = 36
-    WHITE = 37
-    RESET = 0
+from print_utils.main import colored_print, TextColor, BoxPrinter
 
-def colored_print(text: str, color: TextColor):
-    # Use the ANSI escape code for the selected color
-    print(f"\033[{color.value}m{text}\033[0m")
+bp = BoxPrinter()
 
 def find_subprojects(source_dir):
     subprojects = {}
     subproject_paths = {}
-    print(f"Searching for subprojects in {source_dir}...")
+    bp.start_box(f"locating subprojects in {source_dir}")
     for root, dirs, files in os.walk(source_dir):
         if 'sbpt.ini' in files:
             subproject_name = os.path.basename(root)
@@ -43,7 +32,9 @@ def find_subprojects(source_dir):
                 'tags': tags
             }
             subproject_paths[subproject_name] = root
-            print(f"Found subproject: {subproject_name}")
+            bp.queue_print(f"found subproject: {subproject_name} at {root}")
+
+    bp.print_box()
     return subprojects
 
 def generate_include_path(subproject_path, dependency_path, export_file):
@@ -51,16 +42,21 @@ def generate_include_path(subproject_path, dependency_path, export_file):
     return f'#include "{os.path.join(relative_path, export_file)}"'
 
 def write_includes(subprojects):
+    bp.start_box("generating sbpt_generated_header.hpp files")
     for subproject, data in subprojects.items():
-        print(f"Processing subproject: {subproject}")
+        bp.queue_print(f"working on {subproject}")
         includes = []
         subproject_path = data['path']
         
         # Generate include paths for dependencies
         for dependency in data['dependencies']:
+            bp.queue_print(f"found dependency: {dependency}", 1)
             if dependency in subprojects:
                 dependency_path = subprojects[dependency]['path']
-                for export_file in subprojects[dependency]['exports']:
+                exports = subprojects[dependency]['exports']
+                if exports == []:
+                    bp.queue_print("warning, this dependency didn't have an export, this will cause a problem when generating the headers")
+                for export_file in exports:
                     include_path = generate_include_path(subproject_path, dependency_path, export_file)
                     includes.append(include_path)
             else:
@@ -82,9 +78,12 @@ def write_includes(subprojects):
             with open(gitignore_file_path, 'w') as gitignore_file:
                 gitignore_file.write(".gitignore\n")
                 gitignore_file.write(include_file_name)
-            print(f"Generated includes and .gitignore for subproject: {subproject}")
+            # print(f"Generated includes and .gitignore for subproject: {subproject}")
         else:
-            print(f".gitignore already exists for subproject: {subproject}. Skipping .gitignore creation to avoid overwriting.")
+            pass
+            # print(f".gitignore already exists for subproject: {subproject}. Skipping .gitignore creation to avoid overwriting.")
+
+    bp.print_box()
 
 
 GITHUB_BASE_URL = "https://raw.githubusercontent.com/cpp-toolbox"
@@ -112,6 +111,8 @@ def clone_dependency(source_dir, dependency):
     # Attempt to fetch sbpt.ini if no tags are provided
     sbpt_ini_url = f"{GITHUB_BASE_URL}/{dependency}/main/sbpt.ini"
     sbpt_ini_content = fetch_file(sbpt_ini_url)
+
+    print(sbpt_ini_content)
     
     tags = []
     if sbpt_ini_content:
@@ -151,19 +152,21 @@ def clone_dependency(source_dir, dependency):
 
 def sbpt_init(source_dir):
     subprojects = find_subprojects(source_dir)
-
-    # Create a static list of subproject names to iterate over
     subproject_names = list(subprojects.keys())
 
+    cloned_missing_dependencies = False
+
+    bp.start_box("checking if dependencies are satisfied")
     for subproject_name in subproject_names:
         data = subprojects[subproject_name]
-        print(f"Processing subproject: {subproject_name}")
+        bp.queue_print(f"verifying {subproject_name}")
 
-        # Check dependencies and add missing ones
+
         for dependency in data['dependencies']:
             if dependency not in subprojects:
-                print(f"Dependency '{dependency}' is missing for subproject '{subproject_name}'.")
+                bp.queue_print(f"dependency '{dependency}' is missing for subproject '{subproject_name}'.", 1)
                 dependency_path = clone_dependency(source_dir, dependency)
+                cloned_missing_dependencies = True
 
                 # Add the cloned subproject to the dictionary
                 subprojects[dependency] = {
@@ -171,11 +174,17 @@ def sbpt_init(source_dir):
                     'dependencies': [],  # Load actual dependencies if needed
                     'exports': []  # Load actual exports if needed
                 }
-                print(f"Subproject {dependency} added.")
+                bp.queue_print(f"subproject {dependency} added.", 2)
 
-    # After ensuring all dependencies are available, write include files
+
+    bp.print_box()
+
     write_includes(subprojects)
-    print("Initialization complete.")
+
+    if cloned_missing_dependencies:
+        colored_print("warning, there were missing dependencies just cloned in thus we have to setup again, starting that now", TextColor.YELLOW)
+        sbpt_init(source_dir) # recursion bottoms out so long as your dependency chain doesn't have loops
+
 
 def sbpt_list(source_dir):
     subprojects = find_subprojects(source_dir)
@@ -206,12 +215,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
-    # Add command options
+
     parser.add_argument(
-        '--init',
-        metavar='SOURCE_DIR',
+        "source_dir", 
         type=str,
-        help="Initialize a subproject in the specified source directory"
+        help="Run sbpt setup in this directory"  
     )
 
     parser.add_argument(
@@ -225,8 +233,9 @@ def main():
     args = parser.parse_args()
 
     # Handle the commands based on provided arguments
-    if args.init:
-        sbpt_init(args.init)
+    if args.source_dir:
+        sbpt_init(args.source_dir)
+        colored_print("subprojects successfully configured", TextColor.GREEN)
     elif args.list:
         sbpt_list(args.list)
     else:
