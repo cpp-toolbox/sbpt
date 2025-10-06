@@ -1,3 +1,6 @@
 [submodule "print_utils"]
 	path = print_utils
 	url = git@github.com:py-garden/print_utils.git
+[submodule "user_input"]
+	path = user_input
+	url = git@github.com:py-garden/user_input.git
