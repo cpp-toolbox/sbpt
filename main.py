@@ -195,6 +195,11 @@ def clone_dependency(source_dir, dependency):
     # Add the submodule
     subprocess.run(["git", "submodule", "add", clone_url, destination_dir])
 
+    # NOTE: this logic is here because by default just adding a submodule doesn't get any recursive submodules
+    # subprocess.run(["cd", destination_dir])
+    # subprocess.run(["git", "submodule", "update", "--init", "--recursive"])
+    # subprocess.run(["cd", "-"])
+
     print(f"Dependency '{dependency}' added as a submodule at '{destination_dir}'.")
     return destination_dir
 
