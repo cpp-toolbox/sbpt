@@ -17,6 +17,9 @@ An alternative is to convert your code into a library that others can link to. H
 - **Submodule Integration**: Facilitates the sharing of code using submodules, making it easier to reuse code without creating a full-fledged library.
 - **Automatic Generation**: Generates a single `sbpt_generated_includes.hpp` file that handles all necessary includes dynamically, simplifying the integration process for others.
 
+# TODO
+- for each subproject have the ability to automatically deduce a version number based on each commit, this can be done through conventional commits, or c++ code anaylsis. Once I can do this I want then add metadata to sbpt.ini about what version a specific subproject depends on, this defines a dependency graph, and the program will try and find a common version number that can be used by all other subprojects trying to use it. Note that using conventional commits might be wrong here because committers can make mistakes, so it'd be better for this system to be automated in a sense. The way I'd automate this is use git and eventually tbx_utils, it would have a function that can extract the api of a hpp file or whatnot, for each commit we can generate the api of it, and then, we can sequentially deduce when the api changes. Once a system like that is in place we know that we can move version numbers in certain ways to resolve the dependency.
+
 ## How It Works
 
 When a subproject depends on another, `sbpt` eliminates the need for manual inclusion of dependencies. Instead, it generates the required include paths in a single `sbpt_generated_includes.hpp` file, allowing you to share code without worrying about file structure or complex library setups.
