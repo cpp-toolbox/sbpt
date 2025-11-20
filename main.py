@@ -4,17 +4,78 @@ import configparser
 import enum
 import subprocess
 import requests
-
+from dataclasses import dataclass, field
+from typing import Dict, Optional, Tuple, List
+import user_input
+from user_input.main import *
 from print_utils.main import colored_print, TextColor, BoxPrinter
+
+KNOWN_REPOS_FILE = "known_repos.txt"
 
 bp = BoxPrinter()
 
 
-def find_subprojects(source_dir):
+# startfold known repos
+def refresh_known_repos():
+    print("Fetching public repositories from the cpp-toolbox organization...")
+    url = "https://api.github.com/orgs/cpp-toolbox/repos"
+    headers = {"Accept": "application/vnd.github.v3+json"}
+
+    repos = []
+    page = 1
+
+    while True:
+        response = requests.get(
+            url, headers=headers, params={"page": page, "per_page": 100}
+        )
+        if response.status_code != 200:
+            print(f"Failed to retrieve repositories: {response.status_code}")
+            break
+
+        data = response.json()
+        if not data:
+            break
+
+        repos.extend(data)
+        page += 1
+
+    # Save for future searches
+    with open(KNOWN_REPOS_FILE, "w") as f:
+        for r in repos:
+            name = r.get("name", "")
+            ssh_url = r.get("ssh_url", "")
+            f.write(f"{name}|{ssh_url}\n")
+
+    print(f"Saved {len(repos)} repositories to {KNOWN_REPOS_FILE}")
+
+
+def load_known_repos():
+    """returns a json thing the format is defined by however the above function gets it"""
+    if not os.path.exists(KNOWN_REPOS_FILE):
+        print("known_repos.txt does not exist. Run --refresh-known-repos first.")
+        return []
+
+    repos = []
+    with open(KNOWN_REPOS_FILE, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line or "|" not in line:
+                continue
+            name, ssh_url = line.split("|", 1)
+            repos.append({"name": name, "ssh_url": ssh_url})
+
+    return repos
+
+
+# endfold
+
+
+def find_subprojects(target_dir: str) -> Dict[str, Dict]:
+    "looks in the directory recursively to find all existing subprojects"
     subprojects = {}
     subproject_paths = {}
-    bp.start_box(f"locating subprojects in {source_dir}")
-    for root, dirs, files in os.walk(source_dir):
+    bp.start_box(f"locating subprojects in {target_dir}")
+    for root, dirs, files in os.walk(target_dir):
         if "sbpt.ini" in files:
             subproject_name = os.path.basename(root)
             if subproject_name in subprojects:
@@ -51,6 +112,9 @@ def find_subprojects(source_dir):
 
     bp.print_box()
     return subprojects
+
+
+# startfold includes
 
 
 def generate_include_path(subproject_path, dependency_path, export_file):
@@ -107,10 +171,13 @@ def write_includes(subprojects):
     bp.print_box()
 
 
+# endfold
+
+
 GITHUB_BASE_URL = "https://raw.githubusercontent.com/cpp-toolbox"
 
 
-def fetch_file(url):
+def fetch_file(url: str) -> Optional[str]:
     """Fetches a file from a given URL and returns its contents if found."""
     try:
         response = requests.get(url)
@@ -121,7 +188,14 @@ def fetch_file(url):
         return None
 
 
-def parse_sbpt_ini(ini_content):
+@dataclass
+class SbptIniFile:
+    subproject_name: str = ""
+    dependencies: List[str] = field(default_factory=list)
+    tags: List[str] = field(default_factory=list)
+
+
+def parse_sbpt_ini(ini_content: str, submodule_name: str) -> SbptIniFile:
     """Parses sbpt.ini content to extract dependencies and tags."""
     config = configparser.ConfigParser()
     config.read_string(ini_content)
@@ -135,77 +209,100 @@ def parse_sbpt_ini(ini_content):
         for tag in config.get("subproject", "tags", fallback="").split(",")
         if tag.strip()
     ]
-    return dependencies, tags
+
+    return SbptIniFile(submodule_name, dependencies, tags)
 
 
-def clone_dependency(source_dir, dependency):
-    """Handles the process of adding a missing dependency as a git submodule."""
+def get_suggested_dir_to_store_submodule(
+    sbpt_ini_file: SbptIniFile, target_dir: str
+) -> Optional[str]:
+    "Suggests a tag-based directory if tags are available otherwise doesn't"
+    tag_name = sbpt_ini_file.tags[0] if sbpt_ini_file.tags else None
+
+    if tag_name:
+        return os.path.join(target_dir, tag_name, sbpt_ini_file.subproject_name)
+    else:
+        return None
+
+
+def fetch_spbt_ini_file(subproject_name: str) -> Optional[SbptIniFile]:
+    sbpt_ini_url = f"{GITHUB_BASE_URL}/{subproject_name}/main/sbpt.ini"
+    sbpt_ini_content = fetch_file(sbpt_ini_url)
+    if sbpt_ini_content:
+        return parse_sbpt_ini(sbpt_ini_content, subproject_name)
+    else:
+        return None
+
+
+def get_sbpt_file_content(subproject_name: str) -> Optional[str]:
     # Attempt to fetch sbpt.ini if no tags are provided
-    sbpt_ini_url = f"{GITHUB_BASE_URL}/{dependency}/main/sbpt.ini"
+    sbpt_ini_url = f"{GITHUB_BASE_URL}/{subproject_name}/main/sbpt.ini"
+    sbpt_ini_content = fetch_file(sbpt_ini_url)
+    return sbpt_ini_content
+
+
+def interactively_add_subproject_as_submodule(
+    target_dir: str, subproject_name: str
+) -> str:
+    """
+    Handles the process of adding a missing dependency as a git submodule. returns the location that it was stored at
+
+    Note this function assumes that the subproject name is the name of an existing subproject if it's not then the behavior is unspecified
+    """
+    print(f"We are about to add the following subproject: {subproject_name}")
+    # Attempt to fetch sbpt.ini if no tags are provided
+    sbpt_ini_url = f"{GITHUB_BASE_URL}/{subproject_name}/main/sbpt.ini"
     sbpt_ini_content = fetch_file(sbpt_ini_url)
 
-    print(sbpt_ini_content)
+    sbpt_ini_file = fetch_spbt_ini_file(subproject_name)
 
-    tags = []
-    if sbpt_ini_content:
-        _, tags = parse_sbpt_ini(sbpt_ini_content)
-        print(f"Fetched tags for '{dependency}' from sbpt.ini: {tags}")
-    else:
-        print(f"No sbpt.ini file found for '{dependency}'. Proceeding without tags.")
+    chosen_directory: str = ""
 
-    # Suggest a tag-based directory if tags are available
-    tag_name = tags[0] if tags else None
-    suggested_dir = (
-        os.path.join(source_dir, tag_name, dependency)
-        if tag_name
-        else os.path.join(source_dir, dependency)
-    )
-
-    # Offer the tag-based directory as a suggestion
-    if tag_name:
-        use_tag_dir = (
-            input(
-                f"Would you like to add it under the tag '{tag_name}' in '{suggested_dir}'? (y/n): "
-            )
-            .strip()
-            .lower()
+    if sbpt_ini_file == None:
+        print(
+            f"No sbpt.ini file found for '{subproject_name}'. Proceeding with manual placement, please choose a directory:"
         )
-        if use_tag_dir == "y":
-            destination_dir = suggested_dir
-        else:
-            # Prompt for a custom directory if the user doesn't want to use the tag
-            destination_dir = input(
-                f"Enter a custom directory for '{dependency}' (or press enter to use '{source_dir}'): "
-            ).strip() or os.path.join(source_dir, dependency)
+        chosen_directory = interactively_select_directory(Path(target_dir))
+    elif sbpt_ini_file.tags == []:
+        print(
+            f"'{subproject_name}' had a sbpt.ini file but had no tags. Proceeding with manual placement, please choose a directory:"
+        )
+        chosen_directory = interactively_select_directory(Path(target_dir))
     else:
-        # Directly prompt for a directory if no tag is available
-        destination_dir = input(
-            f"Where would you like to store the missing dependency '{dependency}'? "
-        ).strip() or os.path.join(source_dir, dependency)
+        first_tag_name = sbpt_ini_file.tags[0]
+        suggested_dir = os.path.join(target_dir, first_tag_name, subproject_name)
+        user_ok_with_directory = get_yes_no(
+            f"We are going to place the subproject here: {suggested_dir}, are you ok with this?"
+        )
+        if not user_ok_with_directory:
+            chosen_directory = interactively_select_directory(Path(target_dir))
+        else:
+            chosen_directory = suggested_dir
 
-    # Ensure the parent directory exists
-    os.makedirs(os.path.dirname(destination_dir), exist_ok=True)
+    os.makedirs(os.path.dirname(chosen_directory), exist_ok=True)
 
-    # Construct the GitHub repository URL based on the assumed naming convention
-    clone_url = f"git@github.com:cpp-toolbox/{dependency}.git"
+    # TODO: remove dependency on cpp-toolbox, but I just dont care until someone else wants to use this as well on a diff repo
+    ssh_clone_url = f"git@github.com:cpp-toolbox/{subproject_name}.git"
     print(
-        f"Adding '{dependency}' as a submodule from '{clone_url}' into '{destination_dir}'..."
+        f"Adding '{subproject_name}' as a submodule from '{ssh_clone_url}' into '{chosen_directory}'..."
     )
 
     # Add the submodule
-    subprocess.run(["git", "submodule", "add", clone_url, destination_dir])
+    subprocess.run(["git", "submodule", "add", ssh_clone_url, chosen_directory])
 
     # NOTE: this logic is here because by default just adding a submodule doesn't get any recursive submodules
     # subprocess.run(["cd", destination_dir])
     # subprocess.run(["git", "submodule", "update", "--init", "--recursive"])
     # subprocess.run(["cd", "-"])
 
-    print(f"Dependency '{dependency}' added as a submodule at '{destination_dir}'.")
-    return destination_dir
+    print(
+        f"Dependency '{subproject_name}' added as a submodule at '{chosen_directory}'."
+    )
+    return chosen_directory
 
 
-def sbpt_init(source_dir):
-    subprojects = find_subprojects(source_dir)
+def sbpt_init(target_dir: str) -> None:
+    subprojects = find_subprojects(target_dir)
     subproject_names = list(subprojects.keys())
 
     cloned_missing_dependencies = False
@@ -221,7 +318,9 @@ def sbpt_init(source_dir):
                     f"dependency '{dependency}' is missing for subproject '{subproject_name}'.",
                     1,
                 )
-                dependency_path = clone_dependency(source_dir, dependency)
+                dependency_path = interactively_add_subproject_as_submodule(
+                    target_dir, dependency
+                )
                 cloned_missing_dependencies = True
 
                 # Add the cloned subproject to the dictionary
@@ -242,17 +341,17 @@ def sbpt_init(source_dir):
             TextColor.YELLOW,
         )
         sbpt_init(
-            source_dir
+            target_dir
         )  # recursion bottoms out so long as your dependency chain doesn't have loops
 
 
-def sbpt_list(source_dir):
-    subprojects = find_subprojects(source_dir)
+def list_existing_subproject_in_directory_recursively(target_dir: str) -> None:
+    subprojects = find_subprojects(target_dir)
     for subproject, data in subprojects.items():
         print(f"Subproject: {subproject}, Path: {data['path']}")
 
 
-def sbpt_create(target_dir):
+def create_local_subproject_with_cpp_boilerplate(target_dir: str) -> None:
     """Creates a new subproject directory with boilerplate files."""
     os.makedirs(target_dir, exist_ok=True)
 
@@ -307,58 +406,126 @@ def sbpt_create(target_dir):
     )
 
 
+def interactively_select_subproject_name() -> Optional[str]:
+    "returns the name of the repository as string eg) periodic_signal"
+    repos = load_known_repos()
+    if not repos:
+        return None
+
+    while True:
+        search_keyword = input("Enter a keyword to search for repositories: ").strip()
+        if not search_keyword:
+            continue
+
+        matching_repos = [
+            r for r in repos if search_keyword.lower() in r["name"].lower()
+        ]
+
+        if not matching_repos:
+            print("No matching repositories found.")
+            continue
+
+        print("\nMatching repositories:")
+        for i, repo in enumerate(matching_repos):
+            print(f"{i+1}: {repo['name']} - {repo['ssh_url']}")
+
+        choice = input(
+            "Enter the number to select a repo, or 'n' to search again: "
+        ).strip()
+        if choice.lower() == "n":
+            continue
+
+        try:
+            idx = int(choice) - 1
+            if idx < 0 or idx >= len(matching_repos):
+                print("Invalid choice.")
+                continue
+        except ValueError:
+            print("Invalid input.")
+            continue
+
+        selection = matching_repos[idx]
+        print(f"\nSelected: {selection['name']} -> {selection['ssh_url']}")
+        return selection["name"]
+
+
 def main():
-    help_text = """
-    sbpt is a project which allows programmers to re-use C++ code in multiple projects easily without having to use a complex system to handle this.
-    When a subproject depends on another, usually one has to use an #include to the correct location, so that if that information was stored in the
-    project it would break when included in a new project. sbpt dynamically loads in these includes through a `sbpt_generated_includes.hpp` file so
-    that they can be loaded into any project and still work.
-
-    Usage:
-      sbpt --init <source_dir>
-      sbpt --list <source_dir>
-
-    The `sbpt.ini` file format:
-      [subproject]
-      dependencies = comma,separated,list,of,dependencies
-      export = comma,separated,list,of,header,files,to,export
-    """
-
-    # Create the argument parser
     parser = argparse.ArgumentParser(
-        description="Manage C++ subprojects (sbpts)",
-        epilog=help_text,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="sbpt — Manage reusable C++ subprojects.",
     )
 
-    parser.add_argument("source_dir", type=str, help="Run sbpt setup in this directory")
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
-    parser.add_argument(
-        "--list",
-        metavar="SOURCE_DIR",
-        type=str,
-        help="List subprojects in the specified source directory",
+    init_parser = subparsers.add_parser(
+        "init",
+        help="Initialize sbpt configuration in a target directory.",
+        description=(
+            "Initialize sbpt in the given target directory.\n"
+            "This recursively scans for subprojects, generates sbpt_generated_includes.hpp, "
+            "and configures dependencies."
+        ),
+    )
+    init_parser.add_argument(
+        "target_dir",
+        help="Directory to initialize (imporant since this command is recursive)",
     )
 
-    parser.add_argument(
-        "--create",
-        action="store_true",
-        help="Create a new subproject in the specified source_dir",
+    list_parser = subparsers.add_parser(
+        "list",
+        help="List sbpt subprojects in a directory.",
+        description="List all found subprojects in the specified directory.",
+    )
+    list_parser.add_argument("target_dir", help="Directory to scan for subprojects.")
+
+    create_parser = subparsers.add_parser(
+        "create",
+        help="Create a new subproject.",
+        description=(
+            "Create a new subproject inside the given directory. "
+            "This generates a sbpt.ini template and required structure."
+        ),
+    )
+    create_parser.add_argument("target_dir", help="Target directory.")
+
+    refresh_parser = subparsers.add_parser(
+        "refresh-known-repos",
+        help="Update known_repos.txt by downloading cpp-toolbox public repositories.",
+        description="Refresh the known repositories file from the remote cpp-toolbox list.",
     )
 
-    # Parse the arguments
+    add_parser = subparsers.add_parser(
+        "add",
+        help="Interactively search and add a known repository as a subproject.",
+        description="Runs an interactive fuzzy search and adds a selected subproject.",
+    )
+    add_parser.add_argument(
+        "target_dir",
+        help="The directory you want to run this command in the context of",
+    )
+
     args = parser.parse_args()
 
-    # Handle the commands based on provided arguments
-    if args.create:
-        sbpt_create(args.source_dir)
-    elif args.list:
-        sbpt_list(args.list)
-    elif args.source_dir:
-        sbpt_init(args.source_dir)
+    if args.command == "init":
+        sbpt_init(args.target_dir)
         colored_print("subprojects successfully configured", TextColor.GREEN)
-    else:
-        parser.print_help()
+
+    elif args.command == "list":
+        list_existing_subproject_in_directory_recursively(args.target_dir)
+
+    elif args.command == "create":
+        create_local_subproject_with_cpp_boilerplate(args.target_dir)
+
+    elif args.command == "refresh-known-repos":
+        refresh_known_repos()
+
+    elif args.command == "add":
+        selected_subproject_name = interactively_select_subproject_name()
+        if selected_subproject_name:
+            interactively_add_subproject_as_submodule(
+                args.target_dir, selected_subproject_name
+            )
+        else:
+            print("unable to select a repo, please try again")
 
 
 if __name__ == "__main__":
