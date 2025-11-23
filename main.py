@@ -108,9 +108,9 @@ def find_subprojects(target_dir: str) -> Dict[str, Dict]:
                 "tags": tags,
             }
             subproject_paths[subproject_name] = root
-            bp.queue_print(f"found subproject: {subproject_name} at {root}")
+            bp.print_line(f"found subproject: {subproject_name} at {root}")
 
-    bp.print_box()
+    bp.end_box()
     return subprojects
 
 
@@ -125,18 +125,18 @@ def generate_include_path(subproject_path, dependency_path, export_file):
 def write_includes(subprojects):
     bp.start_box("generating sbpt_generated_header.hpp files")
     for subproject, data in subprojects.items():
-        bp.queue_print(f"working on {subproject}")
+        bp.print_line(f"working on {subproject}")
         includes = []
         subproject_path = data["path"]
 
         # Generate include paths for dependencies
         for dependency in data["dependencies"]:
-            bp.queue_print(f"found dependency: {dependency}", 1)
+            bp.print_line(f"found dependency: {dependency}", 1)
             if dependency in subprojects:
                 dependency_path = subprojects[dependency]["path"]
                 exports = subprojects[dependency]["exports"]
                 if exports == []:
-                    bp.queue_print(
+                    bp.print_line(
                         "warning, this dependency didn't have an export, this will cause a problem when generating the headers"
                     )
                 for export_file in exports:
@@ -168,13 +168,14 @@ def write_includes(subprojects):
             pass
             # print(f".gitignore already exists for subproject: {subproject}. Skipping .gitignore creation to avoid overwriting.")
 
-    bp.print_box()
+    bp.end_box()
 
 
 # endfold
 
 
-GITHUB_BASE_URL = "https://raw.githubusercontent.com/cpp-toolbox"
+RAW_GITHUB_BASE_URL = "https://raw.githubusercontent.com/cpp-toolbox"
+GITHUB_BASE_URL = "https://github.com/cpp-toolbox/"
 
 
 def fetch_file(url: str) -> Optional[str]:
@@ -226,7 +227,7 @@ def get_suggested_dir_to_store_submodule(
 
 
 def fetch_spbt_ini_file(subproject_name: str) -> Optional[SbptIniFile]:
-    sbpt_ini_url = f"{GITHUB_BASE_URL}/{subproject_name}/main/sbpt.ini"
+    sbpt_ini_url = f"{RAW_GITHUB_BASE_URL}/{subproject_name}/main/sbpt.ini"
     sbpt_ini_content = fetch_file(sbpt_ini_url)
     if sbpt_ini_content:
         return parse_sbpt_ini(sbpt_ini_content, subproject_name)
@@ -236,22 +237,52 @@ def fetch_spbt_ini_file(subproject_name: str) -> Optional[SbptIniFile]:
 
 def get_sbpt_file_content(subproject_name: str) -> Optional[str]:
     # Attempt to fetch sbpt.ini if no tags are provided
-    sbpt_ini_url = f"{GITHUB_BASE_URL}/{subproject_name}/main/sbpt.ini"
+    sbpt_ini_url = f"{RAW_GITHUB_BASE_URL}/{subproject_name}/main/sbpt.ini"
     sbpt_ini_content = fetch_file(sbpt_ini_url)
     return sbpt_ini_content
 
 
+def is_valid_url(url: str) -> bool:
+    try:
+        response = requests.head(url, allow_redirects=True, timeout=5)
+        # 200-399 are generally OK
+        return response.status_code == 200
+    except requests.RequestException:
+        return False
+
+
 def interactively_add_subproject_as_submodule(
     target_dir: str, subproject_name: str
-) -> str:
+) -> Optional[str]:
     """
     Handles the process of adding a missing dependency as a git submodule. returns the location that it was stored at
 
     Note this function assumes that the subproject name is the name of an existing subproject if it's not then the behavior is unspecified
     """
+
+    github_repo_url = f"{GITHUB_BASE_URL}/{subproject_name}"
+
+    if not is_valid_url(github_repo_url):
+        print(
+            f"There is no remote subproject with the url {github_repo_url}, there are two options"
+        )
+        choice = select_option_numerical(
+            [
+                "Create a local subproject with this name",
+                "Stop sbpt to investigate further (perhaps the remote submodule has been removed)",
+            ],
+        )
+
+        if choice == 1:
+            chosen_directory = interactively_select_directory(Path(target_dir))
+            create_local_subproject_with_cpp_boilerplate(chosen_directory)
+            return chosen_directory
+
+        return None
+
     print(f"We are about to add the following subproject: {subproject_name}")
     # Attempt to fetch sbpt.ini if no tags are provided
-    sbpt_ini_url = f"{GITHUB_BASE_URL}/{subproject_name}/main/sbpt.ini"
+    sbpt_ini_url = f"{RAW_GITHUB_BASE_URL}/{subproject_name}/main/sbpt.ini"
     sbpt_ini_content = fetch_file(sbpt_ini_url)
 
     sbpt_ini_file = fetch_spbt_ini_file(subproject_name)
@@ -302,38 +333,43 @@ def interactively_add_subproject_as_submodule(
 
 
 def sbpt_init(target_dir: str) -> None:
-    subprojects = find_subprojects(target_dir)
-    subproject_names = list(subprojects.keys())
+    local_subprojects = find_subprojects(target_dir)
+    local_subproject_names = list(local_subprojects.keys())
 
     cloned_missing_dependencies = False
 
     bp.start_box("checking if dependencies are satisfied")
-    for subproject_name in subproject_names:
-        data = subprojects[subproject_name]
-        bp.queue_print(f"verifying {subproject_name}")
+    for subproject_name in local_subproject_names:
+        data = local_subprojects[subproject_name]
+        bp.print_line(f"verifying {subproject_name}")
 
         for dependency in data["dependencies"]:
-            if dependency not in subprojects:
-                bp.queue_print(
-                    f"dependency '{dependency}' is missing for subproject '{subproject_name}'.",
+            if dependency not in local_subprojects:
+                bp.print_line(
+                    f"dependency subproject '{dependency}' is missing for subproject '{subproject_name}'.",
                     1,
                 )
                 dependency_path = interactively_add_subproject_as_submodule(
                     target_dir, dependency
                 )
+
+                if dependency_path == None:
+                    print("we were unable to process this submodule, stopping now")
+                    return None
+
                 cloned_missing_dependencies = True
 
                 # Add the cloned subproject to the dictionary
-                subprojects[dependency] = {
+                local_subprojects[dependency] = {
                     "path": dependency_path,
                     "dependencies": [],  # Load actual dependencies if needed
                     "exports": [],  # Load actual exports if needed
                 }
-                bp.queue_print(f"subproject {dependency} added.", 2)
+                bp.print_line(f"subproject {dependency} added.", 2)
 
-    bp.print_box()
+    bp.end_box()
 
-    write_includes(subprojects)
+    write_includes(local_subprojects)
 
     if cloned_missing_dependencies:
         colored_print(
