@@ -21,6 +21,7 @@ An alternative is to convert your code into a library that others can link to. H
 - for each subproject have the ability to automatically deduce a version number based on each commit, this can be done through conventional commits, or c++ code anaylsis. Once I can do this I want then add metadata to sbpt.ini about what version a specific subproject depends on, this defines a dependency graph, and the program will try and find a common version number that can be used by all other subprojects trying to use it. Note that using conventional commits might be wrong here because committers can make mistakes, so it'd be better for this system to be automated in a sense. The way I'd automate this is use git and eventually tbx_utils, it would have a function that can extract the api of a hpp file or whatnot, for each commit we can generate the api of it, and then, we can sequentially deduce when the api changes. Once a system like that is in place we know that we can move version numbers in certain ways to resolve the dependency.
 - for each breaking change a thing is generated which will update your codebase for the api change.
 - create a version of sbpt that doesn't depend on git
+- is there a way to know how many projects use as a submodules, so we can asses how damaging breaking changes are?
 
 
 ## How It Works
