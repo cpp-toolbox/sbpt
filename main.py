@@ -16,7 +16,7 @@ bp = BoxPrinter()
 
 
 # startfold known repos
-def refresh_known_repos():
+def refresh_and_save_known_repos():
     print("Fetching public repositories from the cpp-toolbox organization...")
     url = "https://api.github.com/orgs/cpp-toolbox/repos"
     headers = {"Accept": "application/vnd.github.v3+json"}
@@ -52,7 +52,8 @@ def refresh_known_repos():
 def load_known_repos():
     """returns a json thing the format is defined by however the above function gets it"""
     if not os.path.exists(KNOWN_REPOS_FILE):
-        print("known_repos.txt does not exist. Run --refresh-known-repos first.")
+        print("known_repos.txt does not exist. Creating it now")
+        refresh_and_save_known_repos()
         return []
 
     repos = []
@@ -552,7 +553,7 @@ def main():
         create_local_subproject_with_cpp_boilerplate(args.target_dir)
 
     elif args.command == "refresh-known-repos":
-        refresh_known_repos()
+        refresh_and_save_known_repos()
 
     elif args.command == "add":
         selected_subproject_name = interactively_select_subproject_name()
