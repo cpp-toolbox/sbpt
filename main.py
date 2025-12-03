@@ -80,9 +80,22 @@ def find_subprojects(target_dir: str) -> Dict[str, Dict]:
         if "sbpt.ini" in files:
             subproject_name = os.path.basename(root)
             if subproject_name in subprojects:
-                raise ValueError(
+
+                print(
                     f"Duplicate subproject name found: {subproject_name} in {root} and {subproject_paths[subproject_name]}"
                 )
+                if len(root) < len(subprojects[subproject_name]):
+                    print(
+                        "we are replacing the one located at {} with the one located at {} because the path is smaller (this is an arbitrary choice)"
+                    )
+                else:
+                    print(
+                        "we are skipping the one located at {} with the one located at {} because the path is longer (this is an arbitrary choice)"
+                    )
+                    continue
+            #     raise ValueError(
+            #         f"Duplicate subproject name found: {subproject_name} in {root} and {subproject_paths[subproject_name]}"
+            #     )
             config = configparser.ConfigParser()
             config.read(os.path.join(root, "sbpt.ini"))
             dependencies = [
