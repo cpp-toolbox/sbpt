@@ -81,16 +81,19 @@ def find_subprojects(target_dir: str) -> Dict[str, Dict]:
             subproject_name = os.path.basename(root)
             if subproject_name in subprojects:
 
+                already_existing_subproject = subprojects[subproject_name]
+                existing_path = already_existing_subproject["path"]
+
                 print(
                     f"Duplicate subproject name found: {subproject_name} in {root} and {subproject_paths[subproject_name]}"
                 )
-                if len(root) < len(subprojects[subproject_name]):
+                if len(root) < len(existing_path):
                     print(
-                        "we are replacing the one located at {} with the one located at {} because the path is smaller (this is an arbitrary choice)"
+                        f"we are replacing the one located at {existing_path} with the one located at {root} because the path is smaller (this is an arbitrary choice)"
                     )
                 else:
                     print(
-                        "we are skipping the one located at {} with the one located at {} because the path is longer (this is an arbitrary choice)"
+                        f"we are skipping the one located at {root} and continuing to use the one located at {existing_path} because the path is longer (this is an arbitrary choice)"
                     )
                     continue
             #     raise ValueError(
@@ -115,6 +118,7 @@ def find_subprojects(target_dir: str) -> Dict[str, Dict]:
                 for tag in config.get("subproject", "tags", fallback="").split(",")
                 if tag.strip()
             ]
+            #TODO: just makes this a class.
             subprojects[subproject_name] = {
                 "path": root,
                 "dependencies": dependencies,
