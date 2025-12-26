@@ -49,12 +49,11 @@ def refresh_and_save_known_repos():
     print(f"Saved {len(repos)} repositories to {KNOWN_REPOS_FILE}")
 
 
-def load_known_repos():
+def load_known_repos() -> List:
     """returns a json thing the format is defined by however the above function gets it"""
     if not os.path.exists(KNOWN_REPOS_FILE):
         print("known_repos.txt does not exist. Creating it now")
         refresh_and_save_known_repos()
-        return []
 
     repos = []
     with open(KNOWN_REPOS_FILE, "r") as f:
@@ -118,7 +117,7 @@ def find_subprojects(target_dir: str) -> Dict[str, Dict]:
                 for tag in config.get("subproject", "tags", fallback="").split(",")
                 if tag.strip()
             ]
-            #TODO: just makes this a class.
+            # TODO: just makes this a class.
             subprojects[subproject_name] = {
                 "path": root,
                 "dependencies": dependencies,
