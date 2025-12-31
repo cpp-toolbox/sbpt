@@ -291,11 +291,16 @@ def interactively_add_subproject_as_submodule(
         )
 
         if choice == 1:
+            print(
+                "please create the directory where this subproject should exist (this is not the containing directory)"
+            )
             chosen_directory = interactively_select_directory(Path(target_dir))
             create_local_subproject_with_cpp_boilerplate(chosen_directory)
             return chosen_directory
 
         return None
+
+    # then the url is valid and we can clone it
 
     print(f"We are about to add the following subproject: {subproject_name}")
     # Attempt to fetch sbpt.ini if no tags are provided
@@ -317,15 +322,21 @@ def interactively_add_subproject_as_submodule(
         )
         chosen_directory = interactively_select_directory(Path(target_dir))
     else:
+        # otherwise we have all the data.
         first_tag_name = sbpt_ini_file.tags[0]
         suggested_dir = os.path.join(target_dir, first_tag_name, subproject_name)
-        user_ok_with_directory = get_yes_no(
-            f"We are going to place the subproject here: {suggested_dir}, are you ok with this?"
-        )
-        if not user_ok_with_directory:
-            chosen_directory = interactively_select_directory(Path(target_dir))
-        else:
+
+        requires_no_confirmation = True
+        if requires_no_confirmation:
             chosen_directory = suggested_dir
+        else:
+            user_ok_with_directory = get_yes_no(
+                f"We are going to place the subproject here: {suggested_dir}, are you ok with this?"
+            )
+            if not user_ok_with_directory:
+                chosen_directory = interactively_select_directory(Path(target_dir))
+            else:
+                chosen_directory = suggested_dir
 
     os.makedirs(os.path.dirname(chosen_directory), exist_ok=True)
 
@@ -405,7 +416,7 @@ def list_existing_subproject_in_directory_recursively(target_dir: str) -> None:
 
 
 def create_local_subproject_with_cpp_boilerplate(target_dir: str) -> None:
-    """Creates a new subproject directory with boilerplate files."""
+    """Creates a new subproject directory with boilerplate files. By creating hpp/cpp and a sbpt.ini in the target dir"""
     os.makedirs(target_dir, exist_ok=True)
 
     subproject_name = os.path.basename(os.path.normpath(target_dir))
